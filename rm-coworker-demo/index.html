@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RM Coworker — Follow-Up Agent Prototype</title>
+<style>
+  :root{
+    --navy:#0a0e1f;
+    --navy-2:#11172c;
+    --blue:#3b5bdb;
+    --blue-light:#7c96f5;
+    --ink:#12152b;
+    --muted:#5b6178;
+    --line:#e6e8f0;
+    --bg:#ffffff;
+    --card:#f6f7fb;
+    --green:#1f9d55;
+    --amber:#c9820a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.55;
+  }
+  h1,h2,h3{
+    font-family:Georgia,"Times New Roman",serif;
+    font-weight:400;
+    margin:0 0 .4em 0;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px;}
+  a{color:inherit;}
+
+  /* NAV */
+  nav{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 24px;border-bottom:1px solid var(--line);
+  }
+  .brand{font-weight:700;letter-spacing:.02em;font-size:15px;}
+  .brand span{color:var(--blue);}
+  .navtag{font-size:12px;color:var(--muted);}
+
+  /* HERO */
+  .hero{padding:72px 0 56px;border-bottom:1px solid var(--line);}
+  .kicker{
+    font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--blue);font-weight:700;margin-bottom:14px;
+  }
+  .hero h1{font-size:44px;line-height:1.15;max-width:720px;}
+  .hero h1 em{font-style:normal;color:var(--blue);}
+  .hero p{font-size:17px;color:var(--muted);max-width:600px;margin-top:14px;}
+
+  /* STAT ROW */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:40px;
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .stat{padding:22px 20px;border-right:1px solid var(--line);}
+  .stat:last-child{border-right:none;}
+  .stat .num{font-size:28px;font-weight:700;color:var(--blue);}
+  .stat .lbl{font-size:13px;color:var(--muted);margin-top:4px;}
+
+  /* SECTION */
+  section{padding:64px 0;border-bottom:1px solid var(--line);}
+  .section-head{max-width:640px;margin-bottom:36px;}
+  .section-head h2{font-size:30px;}
+  .section-head p{color:var(--muted);font-size:15px;}
+
+  /* FOUNDATION - dark panel */
+  .foundation{background:var(--navy);color:#fff;border-radius:14px;padding:44px;}
+  .foundation h2{color:#fff;font-size:26px;}
+  .foundation > p{color:#aab0c8;max-width:600px;font-size:14px;}
+  .pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:32px;}
+  .pillar{
+    background:var(--navy-2);border:1px solid #232a45;border-radius:10px;padding:20px;
+  }
+  .pillar .tag{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--blue-light);font-weight:700;margin-bottom:10px;}
+  .pillar p{font-size:13px;color:#c4c9de;margin:0;}
+  .pillar ul{margin:8px 0 0;padding-left:16px;font-size:13px;color:#c4c9de;}
+  .pillar li{margin-bottom:3px;}
+
+  /* DEMO */
+  .scenarios{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .scenario{
+    border:1px solid var(--line);border-radius:10px;padding:18px;cursor:pointer;
+    background:var(--card);transition:border-color .15s, background .15s;
+  }
+  .scenario:hover{border-color:var(--blue);}
+  .scenario.active{border-color:var(--blue);background:#eef1ff;}
+  .scenario .name{font-weight:700;font-size:14px;}
+  .scenario .meta{font-size:12px;color:var(--muted);margin-top:2px;}
+  .scenario .snippet{font-size:13px;color:var(--muted);margin-top:10px;font-style:italic;}
+
+  .demo-panel{
+    margin-top:24px;border:1px solid var(--line);border-radius:10px;
+    display:none;overflow:hidden;
+  }
+  .demo-panel.show{display:block;}
+  .demo-panel .row{
+    display:grid;grid-template-columns:180px 1fr;border-top:1px solid var(--line);
+  }
+  .demo-panel .row:first-child{border-top:none;}
+  .demo-panel .label{
+    padding:16px 18px;font-size:12px;font-weight:700;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--muted);background:#fafbfc;
+    border-right:1px solid var(--line);
+  }
+  .demo-panel .content{padding:16px 20px;font-size:14px;}
+  .demo-panel .content pre{
+    white-space:pre-wrap;font-family:inherit;margin:0;font-size:14px;
+  }
+  .flag{
+    display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;
+  }
+  .flag.green{background:#e6f6ec;color:var(--green);}
+  .flag.amber{background:#fdf1de;color:var(--amber);}
+
+  .hint{font-size:13px;color:var(--muted);margin-top:14px;}
+
+  /* BUSINESS MODEL */
+  table{width:100%;border-collapse:collapse;margin-top:8px;}
+  th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line);}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;}
+  .assump{font-size:12px;color:var(--muted);margin-top:10px;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:8px;}
+  .two-col h3{font-size:16px;margin-bottom:8px;}
+  .two-col p{font-size:14px;color:var(--ink);}
+  .two-col ul{font-size:14px;padding-left:18px;margin:8px 0 0;}
+  .two-col li{margin-bottom:6px;}
+
+  footer{padding:32px 0;text-align:center;color:var(--muted);font-size:13px;}
+
+  @media (max-width:800px){
+    .stats{grid-template-columns:1fr;}
+    .stat{border-right:none;border-bottom:1px solid var(--line);}
+    .pillars{grid-template-columns:1fr 1fr;}
+    .scenarios{grid-template-columns:1fr;}
+    .demo-panel .row{grid-template-columns:1fr;}
+    .demo-panel .label{border-right:none;border-bottom:1px solid var(--line);}
+    .two-col{grid-template-columns:1fr;}
+    .hero h1{font-size:32px;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">RM <span>Coworker</span> — Follow-Up Agent</div>
+  <div class="navtag">Prototype by Nidhish Nagar · for OneByZero</div>
+</nav>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="kicker">Extending RM Coworker</div>
+    <h1>RM Coworker preps the call. <em>Nobody owns what happens after.</em></h1>
+    <p>Relationship managers get faster call prep and sharper insights from RM Coworker today. The follow-through — the email, the CRM note, the cross-sell flag — is still manual, still inconsistent, and still where revenue quietly leaks. This prototype closes that gap.</p>
+
+    <div class="stats">
+      <div class="stat"><div class="num">120–180</div><div class="lbl">accounts a single RM typically manages</div></div>
+      <div class="stat"><div class="num">&lt;20%</div><div class="lbl">of accounts get consistent, proactive follow-up today*</div></div>
+      <div class="stat"><div class="num">2 weeks</div><div class="lbl">to deploy — reuses RM Coworker's existing system access</div></div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>The foundation</h2>
+      <p>Same architecture as every OBZ AI Coworker — this agent is a configuration on top of it, not a new build.</p>
+    </div>
+    <div class="foundation">
+      <h2>Follow-Up Agent, on the standard base</h2>
+      <p>Inherits RM Coworker's existing enterprise access. Nothing new to integrate.</p>
+      <div class="pillars">
+        <div class="pillar">
+          <div class="tag">Knowledge</div>
+          <p>Reuses what RM Coworker already has:</p>
+          <ul>
+            <li>Client history &amp; portfolio</li>
+            <li>Product &amp; pricing catalog</li>
+            <li>Compliance / suitability rules</li>
+          </ul>
+        </div>
+        <div class="pillar">
+          <div class="tag">Channels</div>
+          <p>Acts where the RM already works:</p>
+          <ul>
+            <li>Draft in email</li>
+            <li>Note in CRM</li>
+            <li>Slack/Teams ping to RM</li>
+          </ul>
+        </div>
+        <div class="pillar">
+          <div class="tag">Skills</div>
+          <p>New skill added to the base:</p>
+          <ul>
+            <li>Summarise the call</li>
+            <li>Draft the follow-up</li>
+            <li>Flag cross-sell + next-best-action</li>
+          </ul>
+        </div>
+        <div class="pillar">
+          <div class="tag">Tools</div>
+          <p>Same tool access, no new setup:</p>
+          <ul>
+            <li>Salesforce / core CRM</li>
+            <li>Email</li>
+            <li>Calendar / task queue</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>See it work</h2>
+      <p>Pick a call the RM just finished. The agent reads the summary and produces the follow-up — pick one to see it generate.</p>
+    </div>
+
+    <div class="scenarios">
+      <div class="scenario" data-id="priya">
+        <div class="name">Priya Sharma</div>
+        <div class="meta">Premium Banking · Quarterly review call</div>
+        <div class="snippet">"...also I need to start thinking about Ananya's college fund, she starts in about two years..."</div>
+      </div>
+      <div class="scenario" data-id="rajesh">
+        <div class="name">Rajesh Kumar</div>
+        <div class="meta">SME Banking · Working capital call</div>
+        <div class="snippet">"...we're expanding the second unit, cash is tight till the new orders land, can we look at the credit line..."</div>
+      </div>
+      <div class="scenario" data-id="quiet">
+        <div class="name">Meera Enterprises</div>
+        <div class="meta">Corporate Banking · Account gone quiet</div>
+        <div class="snippet">Usage down 40% over 3 months. Two check-in emails unanswered. No call logged this quarter.</div>
+      </div>
+    </div>
+
+    <div class="demo-panel" id="panel">
+      <div class="row">
+        <div class="label">Follow-up draft</div>
+        <div class="content"><pre id="out-email"></pre></div>
+      </div>
+      <div class="row">
+        <div class="label">CRM next action</div>
+        <div class="content" id="out-crm"></div>
+      </div>
+      <div class="row">
+        <div class="label">Cross-sell flag</div>
+        <div class="content" id="out-crosssell"></div>
+      </div>
+      <div class="row">
+        <div class="label">Routing</div>
+        <div class="content" id="out-routing"></div>
+      </div>
+    </div>
+    <div class="hint">Outputs above are scripted for this walkthrough, written to the same standard the agent would produce live — wired to an LLM call against real CRM/call data for production.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>The business case</h2>
+      <p>What this is worth, what it costs to run, and how it gets sold — stated assumptions, not real client figures.</p>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <h3>Pricing</h3>
+        <table>
+          <tr><th>Model</th><th>Price</th></tr>
+          <tr><td>Dedicated agent</td><td>$40–55k / agent / yr</td></tr>
+          <tr><td>Shared agent (limited)</td><td>$8–12k / agent / yr</td></tr>
+          <tr><td>Implementation fee</td><td>10–20% of yr-1 revenue, one-time</td></tr>
+        </table>
+        <div class="assump">Assumption: priced in line with OBZ's existing dedicated/shared agent tiers, not a new pricing motion.</div>
+      </div>
+      <div>
+        <h3>Unit economics</h3>
+        <table>
+          <tr><th>Metric</th><th>Estimate</th></tr>
+          <tr><td>CAC</td><td>~$3,000 (existing account, not new logo)</td></tr>
+          <tr><td>LTV (3-yr)</td><td>~$120–150k</td></tr>
+          <tr><td>LTV : CAC</td><td>~40–50x</td></tr>
+          <tr><td>Payback</td><td>&lt; 4 months</td></tr>
+        </table>
+        <div class="assump">Assumption: sold into a bank that already runs RM Coworker — CAC is near-zero since it's an upsell, not a new deployment.</div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:36px;">
+      <div>
+        <h3>How this gets sold</h3>
+        <p>Not a new pitch to a new buyer. This goes to the existing RM Coworker sponsor as: "the workflow you already trust, extended one step further, with zero new integration."</p>
+        <ul>
+          <li>Angle: quantify what's leaking today (missed cross-sell on long-tail accounts) using the client's own account volume</li>
+          <li>Proof: one pilot desk, 4–6 weeks, measured against baseline follow-up rate</li>
+          <li>Close: same procurement motion as the original RM Coworker deal — no new vendor review</li>
+        </ul>
+      </div>
+      <div>
+        <h3>What I'd explicitly not do</h3>
+        <p>Not pitching this as a new AI product to a cold bank. That's a 6–12 month enterprise cycle this prototype can't shortcut.</p>
+        <ul>
+          <li>Not chasing a brand-new bank relationship — no warm door, no case study to point to yet</li>
+          <li>Not automating the credit-line or compliance-sensitive decisions — those stay human-in-the-loop, routed not resolved</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Built as a scoped, 2–4 week problem for OneByZero — not a pitch deck, a working example.
+</footer>
+
+<script>
+const DATA = {
+  priya: {
+    email: `Hi Priya,
+
+Good speaking with you today — thank you for the update on the portfolio and for flagging Ananya's college plans.
+
+As discussed, I've attached the rebalancing summary we reviewed. Separately, given the ~2-year timeline you mentioned for education expenses, I'd like to walk you through a couple of short-duration savings options that could fit alongside your current FDs — happy to send a one-pager first if that's easier before we talk again.
+
+Let me know what works.
+
+Best,
+[RM name]`,
+    crm: `Next-best-action logged: <b>Education savings consultation</b> — timeline flagged as 24 months. Priority: medium. Suggested touchpoint: within 2 weeks.`,
+    crosssell: `<span class="flag green">Relevant</span> Education Savings SIP — mentioned specific timeline + existing FD relationship. Confidence: high.`,
+    routing: `<span class="flag green">Auto-sent for RM review</span> Routine relationship content, no compliance-sensitive terms detected. RM approves and sends.`
+  },
+  rajesh: {
+    email: `Hi Rajesh,
+
+Thanks for the update on the expansion — exciting to hear the second unit is moving forward.
+
+I've noted your interest in reviewing the working capital line given the timing gap before the new orders land. I'm looping in our credit team so we can look at options together — they'll reach out within 2 business days with what they'd need from your end.
+
+In the meantime, let me know if there's anything urgent I can help unblock.
+
+Best,
+[RM name]`,
+    crm: `Next-best-action logged: <b>Escalate to credit team</b> — working capital line increase request. Priority: high. SLA: 2 business days.`,
+    crosssell: `<span class="flag amber">Possible</span> Trade finance facility — expansion context suggests future relevance, not raised this call. Confidence: medium.`,
+    routing: `<span class="flag amber">Held for human review</span> Credit decision + compliance-sensitive terms detected. Routed to credit team, not auto-actioned.`
+  },
+  quiet: {
+    email: `Hi [Contact name],
+
+It's been a little while since we last connected, and I wanted to check in directly rather than send another automated note.
+
+Is there anything currently getting in the way of the account working the way you need it to? I'd rather hear that from you than guess — happy to jump on a call this week if useful, or point you to the right person if it's not me.
+
+Best,
+[RM name]`,
+    crm: `Next-best-action logged: <b>Account health flag — RM outreach required</b>. Usage down 40% over 3 months, 2 prior check-ins unanswered. Not auto-resolved.`,
+    crosssell: `<span class="flag amber">Not applicable</span> No cross-sell signal — priority is retention diagnosis, not expansion.`,
+    routing: `<span class="flag amber">Escalated to RM, not auto-sent</span> Relationship-sensitive — usage decline pattern requires RM judgment on tone and timing before any message goes out.`
+  }
+};
+
+const panel = document.getElementById('panel');
+document.querySelectorAll('.scenario').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.scenario').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+    const d = DATA[el.dataset.id];
+    document.getElementById('out-email').textContent = d.email;
+    document.getElementById('out-crm').innerHTML = d.crm;
+    document.getElementById('out-crosssell').innerHTML = d.crosssell;
+    document.getElementById('out-routing').innerHTML = d.routing;
+    panel.classList.add('show');
+    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+});
+</script>
+
+</body>
+</html>
