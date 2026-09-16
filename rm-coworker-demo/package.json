@@ -1,0 +1,13 @@
+{
+  "name": "rm-coworker-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RM Coworker Follow-Up Agent prototype — live version backed by Gemini",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

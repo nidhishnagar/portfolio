@@ -282,7 +282,7 @@
         <div class="content" id="out-routing"></div>
       </div>
     </div>
-    <div class="hint">The tool calls and outputs above are scripted for this walkthrough, written to the same standard the agent would produce live — this is what makes it an <b>agent</b> rather than a chatbot: it looks up real data through tool calls before it writes anything. Wired to a live model + real CRM/call data for production.</div>
+    <div class="hint" id="hint">Live mode: this calls Gemini in real time — it decides which tools to call, gets real (mock) data back, and only then writes the output below. If the server isn't running, it falls back to a scripted walkthrough.</div>
   </div>
 </section>
 
@@ -407,43 +407,81 @@ Best,
 
 const panel = document.getElementById('panel');
 const traceEl = document.getElementById('out-trace');
+const hintEl = document.getElementById('hint');
 let runToken = 0;
 
+function flagWrap(text) {
+  const m = text && text.match(/^\[(RELEVANT|POSSIBLE|NOT APPLICABLE|AUTO|HUMAN REVIEW)\]\s*/i);
+  if (!m) return text || '';
+  const kind = m[1].toUpperCase();
+  const cls = (kind === 'RELEVANT' || kind === 'AUTO') ? 'green' : 'amber';
+  return `<span class="flag ${cls}">${kind}</span> ${text.slice(m[0].length)}`;
+}
+
+function renderTrace(tools, cb) {
+  traceEl.innerHTML = '';
+  tools.forEach((t, i) => {
+    setTimeout(() => {
+      const line = document.createElement('div');
+      line.className = 'trace-line';
+      line.innerHTML = `<span class="trace-call">→ <b>${t.call}</b></span><span class="trace-result">${t.result}</span>`;
+      traceEl.appendChild(line);
+      if (i === tools.length - 1) setTimeout(cb, 350);
+    }, i * 450);
+  });
+}
+
+async function runLive(scenarioId) {
+  const res = await fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario: scenarioId })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'server error');
+  }
+  return res.json();
+}
+
 document.querySelectorAll('.scenario').forEach(el => {
-  el.addEventListener('click', () => {
+  el.addEventListener('click', async () => {
     document.querySelectorAll('.scenario').forEach(s => s.classList.remove('active'));
     el.classList.add('active');
-    const d = DATA[el.dataset.id];
+    const id = el.dataset.id;
+    const fallback = DATA[id];
     const myRun = ++runToken;
 
     panel.classList.add('show');
     panel.scrollIntoView({behavior:'smooth', block:'nearest'});
-
-    // Reset: hide trace and blank the rest until tool calls finish "running"
-    traceEl.innerHTML = '';
+    traceEl.innerHTML = '<div class="trace-line" style="animation:none;opacity:1;color:#6d7590;">Calling Gemini…</div>';
     document.getElementById('out-email').textContent = '';
     document.getElementById('out-crm').innerHTML = '';
     document.getElementById('out-crosssell').innerHTML = '';
     document.getElementById('out-routing').innerHTML = '';
 
-    d.tools.forEach((t, i) => {
-      setTimeout(() => {
-        if (myRun !== runToken) return; // a newer scenario was clicked, abandon this run
-        const line = document.createElement('div');
-        line.className = 'trace-line';
-        line.style.animationDelay = '0s';
-        line.innerHTML = `<span class="trace-call">→ <b>${t.call}</b></span><span class="trace-result">${t.result}</span>`;
-        traceEl.appendChild(line);
-      }, i * 450);
-    });
-
-    setTimeout(() => {
+    try {
+      const live = await runLive(id);
       if (myRun !== runToken) return;
-      document.getElementById('out-email').textContent = d.email;
-      document.getElementById('out-crm').innerHTML = d.crm;
-      document.getElementById('out-crosssell').innerHTML = d.crosssell;
-      document.getElementById('out-routing').innerHTML = d.routing;
-    }, d.tools.length * 450 + 250);
+      renderTrace(live.toolCalls, () => {
+        if (myRun !== runToken) return;
+        document.getElementById('out-email').textContent = live.email;
+        document.getElementById('out-crm').innerHTML = live.crm;
+        document.getElementById('out-crosssell').innerHTML = flagWrap(live.crosssell);
+        document.getElementById('out-routing').innerHTML = flagWrap(live.routing);
+      });
+      hintEl.textContent = 'Live: generated just now by Gemini, using the tool calls shown above.';
+    } catch (e) {
+      if (myRun !== runToken) return;
+      hintEl.textContent = `Live server not reachable (${e.message}) — showing the scripted walkthrough instead. Run "node server.js" in rm-coworker-demo/ for the live version.`;
+      renderTrace(fallback.tools, () => {
+        if (myRun !== runToken) return;
+        document.getElementById('out-email').textContent = fallback.email;
+        document.getElementById('out-crm').innerHTML = fallback.crm;
+        document.getElementById('out-crosssell').innerHTML = fallback.crosssell;
+        document.getElementById('out-routing').innerHTML = fallback.routing;
+      });
+    }
   });
 });
 </script>
