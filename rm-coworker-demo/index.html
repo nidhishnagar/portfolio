@@ -118,6 +118,22 @@
 
   .hint{font-size:13px;color:var(--muted);margin-top:14px;}
 
+  /* TOOL CALL TRACE */
+  .trace{
+    background:var(--navy);border-radius:8px;padding:16px 18px;
+    font-family:"Courier New",Consolas,monospace;font-size:13px;line-height:1.7;
+  }
+  .trace-line{opacity:0;animation:fadeIn .3s forwards;margin-bottom:10px;}
+  .trace-line:last-child{margin-bottom:0;}
+  .trace-call{color:#8fb8ff;}
+  .trace-call b{color:#fff;}
+  .trace-result{color:#8fd6a8;padding-left:20px;display:block;margin-top:2px;}
+  .trace-badge{
+    display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;
+    color:#6d7590;text-transform:uppercase;margin-bottom:8px;
+  }
+  @keyframes fadeIn{to{opacity:1;}}
+
   /* BUSINESS MODEL */
   table{width:100%;border-collapse:collapse;margin-top:8px;}
   th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line);}
@@ -243,6 +259,13 @@
 
     <div class="demo-panel" id="panel">
       <div class="row">
+        <div class="label">Tool calls</div>
+        <div class="content">
+          <div class="trace-badge">What the agent looked up before writing anything</div>
+          <div class="trace" id="out-trace"></div>
+        </div>
+      </div>
+      <div class="row">
         <div class="label">Follow-up draft</div>
         <div class="content"><pre id="out-email"></pre></div>
       </div>
@@ -259,7 +282,7 @@
         <div class="content" id="out-routing"></div>
       </div>
     </div>
-    <div class="hint">Outputs above are scripted for this walkthrough, written to the same standard the agent would produce live — wired to an LLM call against real CRM/call data for production.</div>
+    <div class="hint">The tool calls and outputs above are scripted for this walkthrough, written to the same standard the agent would produce live — this is what makes it an <b>agent</b> rather than a chatbot: it looks up real data through tool calls before it writes anything. Wired to a live model + real CRM/call data for production.</div>
   </div>
 </section>
 
@@ -323,6 +346,11 @@
 <script>
 const DATA = {
   priya: {
+    tools: [
+      { call: 'get_client_profile(client_id: "priya_sharma")', result: '{ tier: "Premium", tenure_years: 6, existing_products: ["FD", "Savings"], aum: "₹42L" }' },
+      { call: 'get_call_transcript_summary(call_id: "c_20250912_priya")', result: '{ topics: ["portfolio rebalancing", "education fund — Ananya, ~24mo"], sentiment: "positive" }' },
+      { call: 'check_compliance_flag(topic: "education_savings_products")', result: '{ requires_review: false, reason: "informational only, no advice given yet" }' }
+    ],
     email: `Hi Priya,
 
 Good speaking with you today — thank you for the update on the portfolio and for flagging Ananya's college plans.
@@ -338,6 +366,11 @@ Best,
     routing: `<span class="flag green">Auto-sent for RM review</span> Routine relationship content, no compliance-sensitive terms detected. RM approves and sends.`
   },
   rajesh: {
+    tools: [
+      { call: 'get_client_profile(client_id: "rajesh_kumar")', result: '{ tier: "SME", tenure_years: 3, existing_products: ["Current A/c", "Term Loan"], sector: "Manufacturing" }' },
+      { call: 'get_call_transcript_summary(call_id: "c_20250910_rajesh")', result: '{ topics: ["business expansion", "working capital ask"], sentiment: "neutral, time-pressured" }' },
+      { call: 'check_compliance_flag(topic: "credit_line_increase")', result: '{ requires_review: true, reason: "credit decision — requires credit team sign-off" }' }
+    ],
     email: `Hi Rajesh,
 
 Thanks for the update on the expansion — exciting to hear the second unit is moving forward.
@@ -353,6 +386,11 @@ Best,
     routing: `<span class="flag amber">Held for human review</span> Credit decision + compliance-sensitive terms detected. Routed to credit team, not auto-actioned.`
   },
   quiet: {
+    tools: [
+      { call: 'get_client_profile(client_id: "meera_enterprises")', result: '{ tier: "Corporate", tenure_years: 8, existing_products: ["Trade Finance", "Payroll"], relationship_health: "declining" }' },
+      { call: 'get_usage_trend(account_id: "meera_enterprises", window: "90d")', result: '{ usage_change: "-40%", last_call_logged: "94 days ago" }' },
+      { call: 'check_compliance_flag(topic: "account_reactivation_outreach")', result: '{ requires_review: true, reason: "relationship-sensitive tone — RM judgment required" }' }
+    ],
     email: `Hi [Contact name],
 
 It's been a little while since we last connected, and I wanted to check in directly rather than send another automated note.
@@ -368,17 +406,44 @@ Best,
 };
 
 const panel = document.getElementById('panel');
+const traceEl = document.getElementById('out-trace');
+let runToken = 0;
+
 document.querySelectorAll('.scenario').forEach(el => {
   el.addEventListener('click', () => {
     document.querySelectorAll('.scenario').forEach(s => s.classList.remove('active'));
     el.classList.add('active');
     const d = DATA[el.dataset.id];
-    document.getElementById('out-email').textContent = d.email;
-    document.getElementById('out-crm').innerHTML = d.crm;
-    document.getElementById('out-crosssell').innerHTML = d.crosssell;
-    document.getElementById('out-routing').innerHTML = d.routing;
+    const myRun = ++runToken;
+
     panel.classList.add('show');
     panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+    // Reset: hide trace and blank the rest until tool calls finish "running"
+    traceEl.innerHTML = '';
+    document.getElementById('out-email').textContent = '';
+    document.getElementById('out-crm').innerHTML = '';
+    document.getElementById('out-crosssell').innerHTML = '';
+    document.getElementById('out-routing').innerHTML = '';
+
+    d.tools.forEach((t, i) => {
+      setTimeout(() => {
+        if (myRun !== runToken) return; // a newer scenario was clicked, abandon this run
+        const line = document.createElement('div');
+        line.className = 'trace-line';
+        line.style.animationDelay = '0s';
+        line.innerHTML = `<span class="trace-call">→ <b>${t.call}</b></span><span class="trace-result">${t.result}</span>`;
+        traceEl.appendChild(line);
+      }, i * 450);
+    });
+
+    setTimeout(() => {
+      if (myRun !== runToken) return;
+      document.getElementById('out-email').textContent = d.email;
+      document.getElementById('out-crm').innerHTML = d.crm;
+      document.getElementById('out-crosssell').innerHTML = d.crosssell;
+      document.getElementById('out-routing').innerHTML = d.routing;
+    }, d.tools.length * 450 + 250);
   });
 });
 </script>
