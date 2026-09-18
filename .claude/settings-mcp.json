@@ -1,0 +1,19 @@
+{
+  "description": "Claude Code settings with YesMadam MySQL MCP server enabled",
+  "mcpServers": {
+    "yesmadam-mysql": {
+      "type": "local",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/mcp-server/src/index.js"
+      ],
+      "env": {
+        "TABLEAU_DB_HOST": "${env:TABLEAU_DB_HOST}",
+        "TABLEAU_DB_PORT": "${env:TABLEAU_DB_PORT}",
+        "TABLEAU_DB_USER": "${env:TABLEAU_DB_USER}",
+        "TABLEAU_DB_PASSWORD": "${env:TABLEAU_DB_PASSWORD}",
+        "TABLEAU_DB_NAME": "${env:TABLEAU_DB_NAME}"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "yesmadam-mysql-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for querying YesMadam MySQL databases",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "mysql2": "^3.6.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
