@@ -134,7 +134,7 @@ Once you have that data, respond with ONLY a JSON object (no markdown fences, no
         });
         return { functionResponse: { name: p.functionCall.name, response: result } };
       });
-      contents.push({ role: 'function', parts: responseParts });
+      contents.push({ role: 'user', parts: responseParts });
     }
 
     res.status(500).json({ error: 'agent did not finish within the turn limit' });
