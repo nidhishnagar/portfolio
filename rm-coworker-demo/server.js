@@ -125,7 +125,7 @@ Once you have that data, respond with ONLY a JSON object (no markdown fences, no
         return res.json({ toolCalls, ...parsed });
       }
 
-      contents.push({ role: 'model', parts: fnCalls.map(p => ({ functionCall: p.functionCall })) });
+      contents.push({ role: 'model', parts: fnCalls });
       const responseParts = fnCalls.map(p => {
         const result = executeTool(scenario, p.functionCall.name, p.functionCall.args || {});
         toolCalls.push({
