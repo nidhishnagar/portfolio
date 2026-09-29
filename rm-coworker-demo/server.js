@@ -8,11 +8,15 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 const API_KEY = process.env.GROQ_API_KEY;
-const PRIMARY_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const PRIMARY_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 // Groq's free tier has generous but still finite per-model rate limits.
 // If the primary model is rate-limited or down, fall back to a second
 // tool-use-capable model instead of just failing the request.
-const MODEL_FALLBACKS = [PRIMARY_MODEL, 'llama-3.1-8b-instant'].filter(
+// (Note: Groq's model catalog turns over fast — llama-3.3-70b-versatile and
+// llama-3.1-8b-instant, both live when this integration was first written,
+// were already retired days later. gpt-oss-20b is a smaller sibling of the
+// primary model, not a dated snapshot, so it's a safer long-term fallback.)
+const MODEL_FALLBACKS = [PRIMARY_MODEL, 'openai/gpt-oss-20b'].filter(
   (m, i, arr) => arr.indexOf(m) === i
 );
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
