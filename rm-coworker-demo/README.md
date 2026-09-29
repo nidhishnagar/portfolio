@@ -38,7 +38,7 @@ npm install
 Create a `.env` file with:
 ```
 GROQ_API_KEY=your_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 ### Start the Server
