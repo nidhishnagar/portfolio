@@ -25,7 +25,7 @@ This agent reuses RM Coworker's existing enterprise access and framework (Knowle
 
 ### Prerequisites
 - Node.js 16+
-- A valid Gemini API key (set in `.env`)
+- A free Groq API key (set in `.env`) — get one at https://console.groq.com/keys
 
 ### Setup
 
@@ -37,8 +37,8 @@ npm install
 
 Create a `.env` file with:
 ```
-GEMINI_API_KEY=your_api_key_here
-GEMINI_MODEL=gemini-3.6-flash
+GROQ_API_KEY=your_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 ### Start the Server

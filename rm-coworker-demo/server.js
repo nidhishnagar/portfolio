@@ -7,20 +7,18 @@ const app = express();
 app.use(express.json());
 app.use(express.static(__dirname));
 
-const API_KEY = process.env.GEMINI_API_KEY;
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-// If the primary model is overloaded ("high demand") or deprecated, we fall
-// back through this list in order instead of just failing the request.
-// 'gemini-flash-latest' is Google's own rolling alias — it always points at
-// whatever their current flash model is, so this fallback doesn't go stale
-// the next time they retire a dated model name (which has already happened
-// twice while building this: 2.0-flash and 2.5-flash were both retired).
-const MODEL_FALLBACKS = [PRIMARY_MODEL, 'gemini-flash-latest'].filter(
+const API_KEY = process.env.GROQ_API_KEY;
+const PRIMARY_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+// Groq's free tier has generous but still finite per-model rate limits.
+// If the primary model is rate-limited or down, fall back to a second
+// tool-use-capable model instead of just failing the request.
+const MODEL_FALLBACKS = [PRIMARY_MODEL, 'llama-3.1-8b-instant'].filter(
   (m, i, arr) => arr.indexOf(m) === i
 );
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 if (!API_KEY) {
-  console.error('Missing GEMINI_API_KEY in .env — the live demo will not work until you add it.');
+  console.error('Missing GROQ_API_KEY in .env — the live demo will not work until you add it. Get one free at https://console.groq.com/keys');
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +74,7 @@ function complianceResult(topic) {
 
 // executeTool is the ONLY function that would change in a real bank
 // deployment — swap the bodies below for real Salesforce/CRM/compliance API
-// calls and everything else (the Gemini loop, the prompt, the routing logic)
+// calls and everything else (the agent loop, the prompt, the routing logic)
 // stays identical.
 function executeTool(scenario, name, args) {
   const d = MOCK_DATA[scenario];
@@ -102,24 +100,37 @@ function executeTool(scenario, name, args) {
   return { error: 'unknown tool: ' + name };
 }
 
-const TOOLS = [{
-  functionDeclarations: [
-    {
+// Groq's API is OpenAI-compatible: tools are declared as
+// { type: 'function', function: { name, description, parameters } }
+// rather than Gemini's { functionDeclarations: [...] }.
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
       name: 'get_client_profile',
       description: "Look up a bank client's CRM profile by client_id",
       parameters: { type: 'object', properties: { client_id: { type: 'string' } }, required: ['client_id'] }
-    },
-    {
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_call_transcript_summary',
       description: 'Look up the summary of a logged RM call by call_id',
       parameters: { type: 'object', properties: { call_id: { type: 'string' } }, required: ['call_id'] }
-    },
-    {
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'check_compliance_flag',
       description: 'Check whether a topic requires human compliance review before acting on it',
       parameters: { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'] }
-    },
-    {
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'log_crm_action',
       description: 'Persist the next-best-action decision to the CRM audit trail. Call this once, after you have decided what the RM should do next.',
       parameters: {
@@ -131,29 +142,29 @@ const TOOLS = [{
         required: ['action', 'priority']
       }
     }
-  ]
-}];
+  }
+];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Tries each model in MODEL_FALLBACKS in order. Within a model, retries once
-// on a transient "high demand" style error with a short backoff before
-// moving to the next model. This is what stops a single Google capacity
-// blip from taking down a live demo.
-async function callGemini(contents) {
+// on a transient rate-limit error, honoring Groq's own suggested wait time
+// when it gives one, before moving to the next model.
+async function callGroq(messages) {
   let lastError;
 
   for (const model of MODEL_FALLBACKS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await fetch(`${url}?key=${API_KEY}`, {
+        const res = await fetch(API_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents, tools: TOOLS })
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${API_KEY}`
+          },
+          body: JSON.stringify({ model, messages, tools: TOOLS, tool_choice: 'auto' })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error?.message || JSON.stringify(data));
@@ -164,21 +175,15 @@ async function callGemini(contents) {
         return data;
       } catch (err) {
         lastError = err;
-        auditLog({ event: 'gemini_call_failed', model, attempt, error: err.message });
+        auditLog({ event: 'groq_call_failed', model, attempt, error: err.message });
 
-        // "high demand" = Google's servers are briefly overloaded.
-        // "quota exceeded" = the free tier's per-minute rate limit (e.g. 5
-        // requests/min on gemini-3.8-flash) — Google's own error message
-        // tells us how long to wait ("Please retry in 36.8s").
-        const quotaMatch = err.message.match(/retry in (\d+(?:\.\d+)?)s/i);
-        const isOverloaded = /high demand|overloaded|503|UNAVAILABLE/i.test(err.message);
-        const isRateLimited = /quota exceeded|rate limit/i.test(err.message);
+        const retryMatch = err.message.match(/try again in (\d+(?:\.\d+)?)s/i);
+        const isRateLimited = /rate limit|429|quota/i.test(err.message);
+        const isOverloaded = /503|UNAVAILABLE|overloaded/i.test(err.message);
 
-        if ((isOverloaded || isRateLimited) && attempt === 0) {
-          const waitMs = quotaMatch
-            ? Math.min(Number(quotaMatch[1]) * 1000 + 500, 40000) // cap at 40s so the demo doesn't hang forever
-            : 800;
-          auditLog({ event: 'retry_scheduled', model, waitMs, reason: isRateLimited ? 'quota' : 'overloaded' });
+        if ((isRateLimited || isOverloaded) && attempt === 0) {
+          const waitMs = retryMatch ? Math.min(Number(retryMatch[1]) * 1000 + 300, 15000) : 800;
+          auditLog({ event: 'retry_scheduled', model, waitMs, reason: isRateLimited ? 'rate_limit' : 'overloaded' });
           await sleep(waitMs);
           continue;
         }
@@ -199,7 +204,7 @@ app.post('/api/run', async (req, res) => {
   auditLog({ event: 'run_started', runId, scenario, client_id: d.client_id });
 
   try {
-    const prompt = `You are RM Coworker's Follow-Up Agent for a bank relationship manager.
+    const systemPrompt = `You are RM Coworker's Follow-Up Agent for a bank relationship manager.
 
 Before writing anything, use the available tools to look up: the client's profile, the call summary, and whether the relevant topic needs compliance review. Do this for client_id "${d.client_id}"${d.call_id ? `, call_id "${d.call_id}"` : ' (no call_id — none logged, skip that lookup)'}, and compliance topic "${d.compliance_topic}".
 
@@ -213,17 +218,16 @@ Only after that, respond with ONLY a JSON object (no markdown fences, no extra t
   "routing": "one sentence on whether this can be auto-sent or needs human review, prefixed with [AUTO] or [HUMAN REVIEW]"
 }`;
 
-    let contents = [{ role: 'user', parts: [{ text: prompt }] }];
+    let messages = [{ role: 'system', content: systemPrompt }];
     const toolCalls = [];
 
     for (let turn = 0; turn < 8; turn++) {
-      const data = await callGemini(contents);
-      const candidate = data.candidates?.[0];
-      const parts = candidate?.content?.parts || [];
-      const fnCalls = parts.filter(p => p.functionCall);
+      const data = await callGroq(messages);
+      const message = data.choices?.[0]?.message || {};
+      const calls = message.tool_calls || [];
 
-      if (fnCalls.length === 0) {
-        const text = parts.map(p => p.text || '').join('').trim();
+      if (calls.length === 0) {
+        const text = (message.content || '').trim();
         const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '');
         let parsed;
         try {
@@ -235,17 +239,18 @@ Only after that, respond with ONLY a JSON object (no markdown fences, no extra t
         return res.json({ toolCalls, ...parsed });
       }
 
-      contents.push({ role: 'model', parts: fnCalls });
-      const responseParts = fnCalls.map(p => {
-        const result = executeTool(scenario, p.functionCall.name, p.functionCall.args || {});
+      messages.push({ role: 'assistant', content: message.content || null, tool_calls: calls });
+
+      for (const call of calls) {
+        const args = JSON.parse(call.function.arguments || '{}');
+        const result = executeTool(scenario, call.function.name, args);
         toolCalls.push({
-          call: `${p.functionCall.name}(${JSON.stringify(p.functionCall.args || {})})`,
+          call: `${call.function.name}(${JSON.stringify(args)})`,
           result: JSON.stringify(result)
         });
-        auditLog({ event: 'tool_call', runId, tool: p.functionCall.name, args: p.functionCall.args || {} });
-        return { functionResponse: { name: p.functionCall.name, response: result } };
-      });
-      contents.push({ role: 'user', parts: responseParts });
+        auditLog({ event: 'tool_call', runId, tool: call.function.name, args });
+        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+      }
     }
 
     auditLog({ event: 'run_timed_out', runId, scenario });
@@ -272,4 +277,4 @@ app.get('/api/audit', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`RM Coworker demo (live) running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`RM Coworker demo (live, Groq) running at http://localhost:${PORT}`));
