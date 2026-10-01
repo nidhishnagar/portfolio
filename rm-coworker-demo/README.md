@@ -84,6 +84,16 @@ Available scenarios:
    }
    ```
 
+### Voice mode (no script)
+
+Below the three scenario cards, hit **Record call** and play the client for 30 seconds. The browser records audio, `/api/transcribe` sends it to Groq Whisper (`whisper-large-v3-turbo`), and `/api/run-transcript` runs the agent on the raw transcript. You can also type or paste a conversation instead of recording.
+
+In voice mode the agent works out who the client is with `find_client` (the CRM knows Priya Sharma, Rajesh Kumar, Meera Enterprises, Arjun Mehta, and Sunita Rao; anyone else is logged as a new prospect), then runs the same compliance check and CRM write as the scenarios.
+
+Compliance rules are deterministic regexes in `server.js`, not model judgment: credit/loans, cross-border/LRS remittances, relationship-sensitive outreach, and regulated advice all force `[HUMAN REVIEW]`.
+
+Every step is logged to `agent_audit.log.jsonl`; view the last 50 entries at `GET /api/audit`.
+
 ## Architecture
 
 The prototype follows OBZ's standard AI Coworker architecture:

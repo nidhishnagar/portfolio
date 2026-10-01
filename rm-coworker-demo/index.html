@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RM Coworker — Follow-Up Agent Prototype</title>
+<link rel="icon" href="data:,">
 <style>
   :root{
     --navy:#0a0e1f;
@@ -134,6 +135,23 @@
   }
   @keyframes fadeIn{to{opacity:1;}}
 
+
+  /* VOICE */
+  .voice{margin-top:24px;border:1px dashed var(--blue);border-radius:10px;padding:20px;background:#f8f9ff;}
+  .voice-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;}
+  .voice-title{font-weight:700;font-size:15px;}
+  .voice-sub{font-size:13px;color:var(--muted);margin-top:4px;max-width:640px;}
+  .rec-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--blue);background:#fff;color:var(--blue);font-weight:700;font-size:14px;padding:10px 16px;border-radius:999px;cursor:pointer;white-space:nowrap;}
+  .rec-btn .dot{width:10px;height:10px;border-radius:50%;background:#d63c3c;}
+  .rec-btn.recording{background:#d63c3c;color:#fff;border-color:#d63c3c;}
+  .rec-btn.recording .dot{background:#fff;animation:pulse 1s infinite;}
+  @keyframes pulse{50%{opacity:.3;}}
+  #transcript{width:100%;min-height:96px;margin-top:14px;border:1px solid var(--line);border-radius:8px;padding:12px;font:inherit;font-size:14px;resize:vertical;background:#fff;color:var(--ink);}
+  .voice-actions{display:flex;align-items:center;gap:14px;margin-top:12px;flex-wrap:wrap;}
+  .gen-btn{background:var(--blue);color:#fff;border:none;font-weight:700;font-size:14px;padding:10px 18px;border-radius:8px;cursor:pointer;}
+  .gen-btn:disabled,.rec-btn:disabled{opacity:.5;cursor:default;}
+  .voice-status{font-size:13px;color:var(--muted);}
+
   /* BUSINESS MODEL */
   table{width:100%;border-collapse:collapse;margin-top:8px;}
   th,td{text-align:left;padding:12px 14px;font-size:14px;border-bottom:1px solid var(--line);}
@@ -257,7 +275,26 @@
       </div>
     </div>
 
+    <div class="voice">
+      <div class="voice-head">
+        <div>
+          <div class="voice-title">Or talk to it &mdash; no script</div>
+          <div class="voice-sub">Hit record and play the client for 30 seconds. Use a name the CRM knows (Priya Sharma, Rajesh Kumar, Meera Enterprises, Arjun Mehta, Sunita Rao) or anyone new. The agent works out who it is, what they want, and whether it needs compliance sign-off.</div>
+        </div>
+        <button class="rec-btn" id="rec-btn" type="button"><span class="dot"></span><span id="rec-label">Record call</span></button>
+      </div>
+      <textarea id="transcript" placeholder="The transcript appears here after recording. You can also type or paste a conversation."></textarea>
+      <div class="voice-actions">
+        <button class="gen-btn" id="gen-btn" type="button">Generate follow-up</button>
+        <span class="voice-status" id="voice-status"></span>
+      </div>
+    </div>
+
     <div class="demo-panel" id="panel">
+      <div class="row" id="row-summary" style="display:none">
+        <div class="label">What it heard</div>
+        <div class="content" id="out-summary"></div>
+      </div>
       <div class="row">
         <div class="label">Tool calls</div>
         <div class="content">
@@ -282,7 +319,7 @@
         <div class="content" id="out-routing"></div>
       </div>
     </div>
-    <div class="hint" id="hint">Live mode: this calls Gemini in real time — it decides which tools to call, gets real (mock) data back, and only then writes the output below. If the server isn't running, it falls back to a scripted walkthrough.</div>
+    <div class="hint" id="hint">Live mode: this runs on Groq in real time — it decides which tools to call, gets real (mock) data back, and only then writes the output below. If the server isn't running, it falls back to a scripted walkthrough.</div>
   </div>
 </section>
 
@@ -408,40 +445,66 @@ Best,
 const panel = document.getElementById('panel');
 const traceEl = document.getElementById('out-trace');
 const hintEl = document.getElementById('hint');
+const summaryRow = document.getElementById('row-summary');
 let runToken = 0;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function flagWrap(text) {
   const m = text && text.match(/^\[(RELEVANT|POSSIBLE|NOT APPLICABLE|AUTO|HUMAN REVIEW)\]\s*/i);
-  if (!m) return text || '';
+  if (!m) return esc(text);
   const kind = m[1].toUpperCase();
   const cls = (kind === 'RELEVANT' || kind === 'AUTO') ? 'green' : 'amber';
-  return `<span class="flag ${cls}">${kind}</span> ${text.slice(m[0].length)}`;
+  return `<span class="flag ${cls}">${kind}</span> ${esc(text.slice(m[0].length))}`;
 }
 
-function renderTrace(tools, cb) {
+function renderTrace(tools, cb, trusted) {
   traceEl.innerHTML = '';
+  if (!tools.length) return cb();
   tools.forEach((t, i) => {
     setTimeout(() => {
       const line = document.createElement('div');
       line.className = 'trace-line';
-      line.innerHTML = `<span class="trace-call">→ <b>${t.call}</b></span><span class="trace-result">${t.result}</span>`;
+      const call = trusted ? t.call : esc(t.call);
+      const result = trusted ? t.result : esc(t.result);
+      line.innerHTML = `<span class="trace-call">→ <b>${call}</b></span><span class="trace-result">${result}</span>`;
       traceEl.appendChild(line);
       if (i === tools.length - 1) setTimeout(cb, 350);
     }, i * 450);
   });
 }
 
-async function runLive(scenarioId) {
-  const res = await fetch('/api/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario: scenarioId })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'server error');
-  }
-  return res.json();
+function startRun(label) {
+  const myRun = ++runToken;
+  panel.classList.add('show');
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  traceEl.innerHTML = `<div class="trace-line" style="animation:none;opacity:1;color:#6d7590;">${esc(label)}</div>`;
+  summaryRow.style.display = 'none';
+  ['out-email','out-crm','out-crosssell','out-routing','out-summary'].forEach(id => document.getElementById(id).textContent = '');
+  return myRun;
+}
+
+function showLive(live, myRun) {
+  renderTrace(live.toolCalls || [], () => {
+    if (myRun !== runToken) return;
+    if (live.summary) {
+      document.getElementById('out-summary').textContent = live.summary;
+      summaryRow.style.display = '';
+    }
+    document.getElementById('out-email').textContent = live.email || '';
+    document.getElementById('out-crm').textContent = live.crm || '';
+    document.getElementById('out-crosssell').innerHTML = flagWrap(live.crosssell);
+    document.getElementById('out-routing').innerHTML = flagWrap(live.routing);
+  }, false);
+}
+
+async function postJson(url, body) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'server error');
+  return data;
 }
 
 document.querySelectorAll('.scenario').forEach(el => {
@@ -450,39 +513,110 @@ document.querySelectorAll('.scenario').forEach(el => {
     el.classList.add('active');
     const id = el.dataset.id;
     const fallback = DATA[id];
-    const myRun = ++runToken;
-
-    panel.classList.add('show');
-    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
-    traceEl.innerHTML = '<div class="trace-line" style="animation:none;opacity:1;color:#6d7590;">Calling Gemini…</div>';
-    document.getElementById('out-email').textContent = '';
-    document.getElementById('out-crm').innerHTML = '';
-    document.getElementById('out-crosssell').innerHTML = '';
-    document.getElementById('out-routing').innerHTML = '';
+    const myRun = startRun('Agent is working…');
 
     try {
-      const live = await runLive(id);
+      const live = await postJson('/api/run', { scenario: id });
       if (myRun !== runToken) return;
-      renderTrace(live.toolCalls, () => {
-        if (myRun !== runToken) return;
-        document.getElementById('out-email').textContent = live.email;
-        document.getElementById('out-crm').innerHTML = live.crm;
-        document.getElementById('out-crosssell').innerHTML = flagWrap(live.crosssell);
-        document.getElementById('out-routing').innerHTML = flagWrap(live.routing);
-      });
-      hintEl.textContent = 'Live: generated just now by Gemini, using the tool calls shown above.';
+      showLive(live, myRun);
+      hintEl.textContent = 'Live: generated just now on Groq, using the tool calls shown above.';
     } catch (e) {
       if (myRun !== runToken) return;
-      hintEl.textContent = `Live server not reachable (${e.message}) — showing the scripted walkthrough instead. Run "node server.js" in rm-coworker-demo/ for the live version.`;
+      hintEl.textContent = `Live server not reachable (${e.message}) — showing the scripted walkthrough instead. Run "npm start" in rm-coworker-demo/ for the live version.`;
       renderTrace(fallback.tools, () => {
         if (myRun !== runToken) return;
         document.getElementById('out-email').textContent = fallback.email;
         document.getElementById('out-crm').innerHTML = fallback.crm;
         document.getElementById('out-crosssell').innerHTML = fallback.crosssell;
         document.getElementById('out-routing').innerHTML = fallback.routing;
-      });
+      }, true);
     }
   });
+});
+
+// ---- Voice: record in the browser, transcribe on Groq Whisper, then run the agent on it ----
+const recBtn = document.getElementById('rec-btn');
+const recLabel = document.getElementById('rec-label');
+const genBtn = document.getElementById('gen-btn');
+const transcriptEl = document.getElementById('transcript');
+const voiceStatus = document.getElementById('voice-status');
+let recorder = null;
+let chunks = [];
+let recTimer = null;
+
+function setStatus(t) { voiceStatus.textContent = t; }
+
+recBtn.addEventListener('click', async () => {
+  if (recorder && recorder.state === 'recording') {
+    recorder.stop();
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    setStatus('This browser can’t record audio here — type or paste a conversation instead.');
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch {
+    setStatus('Microphone permission denied — allow it in the browser, or type the conversation instead.');
+    return;
+  }
+  chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    clearInterval(recTimer);
+    recBtn.classList.remove('recording');
+    recLabel.textContent = 'Record call';
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+    recBtn.disabled = genBtn.disabled = true;
+    setStatus('Transcribing on Groq Whisper…');
+    try {
+      const res = await fetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'transcription failed');
+      transcriptEl.value = data.text;
+      setStatus('Transcribed. Edit it if Whisper misheard anything, then generate.');
+    } catch (e) {
+      setStatus('Transcription failed: ' + e.message);
+    } finally {
+      recBtn.disabled = genBtn.disabled = false;
+    }
+  };
+  recorder.start();
+  recBtn.classList.add('recording');
+  const t0 = Date.now();
+  recLabel.textContent = 'Stop  0:00';
+  recTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    recLabel.textContent = `Stop  ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (s >= 120) recorder.stop();
+  }, 250);
+  setStatus('Recording — talk like the client on a call. Click again to stop.');
+});
+
+genBtn.addEventListener('click', async () => {
+  const transcript = transcriptEl.value.trim();
+  if (transcript.length < 15) { setStatus('Say or type a bit more first.'); return; }
+  document.querySelectorAll('.scenario').forEach(s => s.classList.remove('active'));
+  genBtn.disabled = true;
+  setStatus('Agent is reading the conversation…');
+  const myRun = startRun('Agent is reading the conversation and deciding what to look up…');
+  try {
+    const live = await postJson('/api/run-transcript', { transcript });
+    if (myRun !== runToken) return;
+    showLive(live, myRun);
+    setStatus('Done — generated from your conversation, nothing scripted.');
+    hintEl.textContent = 'Live: generated just now on Groq from the conversation above.';
+  } catch (e) {
+    if (myRun !== runToken) return;
+    traceEl.innerHTML = '';
+    setStatus('Agent failed: ' + e.message);
+  } finally {
+    genBtn.disabled = false;
+  }
 });
 </script>
 
